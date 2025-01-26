@@ -9,4 +9,6 @@ Task *loadJSON(int id);
 
 void deleteJSON(int id);
 
+int getAvailableID();
+
 #endif

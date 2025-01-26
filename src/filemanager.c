@@ -1,30 +1,32 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <dirent.h>
+#include <string.h>
 #include "cJSON.h"
 #include "taskmanager.h"
 #include "log.h"
 
 char *path = "./tasks";
 
-void saveJSON(const char *title)
+void saveJSON(Task *task)
 {
+	dirExists() == 1 ? log(DEBUG, "Directory exists, checking for available id...\n") : dirCreate();
+
 	// Create JSON object
 	log(DEBUG, "Creating JSON object\n");
 	cJSON *root = cJSON_CreateObject();
-	cJSON_AddStringToObject(root, "title", title);
-	cJSON_AddNumberToObject(root, "status", 0);
+	cJSON_AddStringToObject(root, "title", task->title);
+	cJSON_AddNumberToObject(root, "status", task->status);
+	cJSON_AddNumberToObject(root, "id", task->id);
 
 	// Convert JSON object to string
 	log(DEBUG, "Convert JSON object to string\n");
 	char *json_string = cJSON_Print(root);
 
-	dirExists() == 1 ? log(DEBUG, "Directory exists, checking for available id...\n") : dirCreate();
-	int id = getAvailableID();
-
 	// Write JSON string to file
 	log(DEBUG, "Write JSON string to file\n");
 	char string[200];
-	sprintf(string, "%s/%d.json", path, id);
+	sprintf(string, "%s/%d.json", path, task->id);
 	FILE *file = fopen(string, "w");
 	if (file == NULL)
 	{
@@ -35,6 +37,7 @@ void saveJSON(const char *title)
 	fclose(file);
 
 	// Free resources
+	free(task);
 	free(json_string);
 	cJSON_Delete(root);
 	log(DEBUG, "Json created and resources freed\n");
@@ -62,33 +65,40 @@ void dirCreate()
 Task *loadJSON(int id)
 {
 	// Open the file
-	FILE *file = fopen(("%s/%d.json", path, id), "r");
+	log(DEBUG, "Opening file...\n");
+	char string[200];
+	sprintf(string, "%s/%d.json", path, id);
+	FILE *file = fopen(string, "r");
 	if (file == NULL)
 	{
 		perror("Error opening file");
-		return;
+		return NULL;
 	}
 
 	// Get file size
+	log(DEBUG, "Getting file size...\n");
 	fseek(file, 0, SEEK_END);
 	long filesize = ftell(file);
 	rewind(file);
 
 	// Allocate memory for file contents
+	log(DEBUG, "Allocating memory for file contents...\n");
 	char *json_string = (char *)malloc(filesize + 1);
 	if (json_string == NULL)
 	{
 		perror("Memory allocation failed");
 		fclose(file);
-		return;
+		return NULL;
 	}
 
 	// Read file into string
+	log(DEBUG, "Reading file into string...\n");
 	fread(json_string, 1, filesize, file);
 	json_string[filesize] = '\0';
 	fclose(file);
 
 	// Parse JSON string
+	log(DEBUG, "Parsing JSON string...\n");
 	cJSON *root = cJSON_Parse(json_string);
 	if (root == NULL)
 	{
@@ -98,16 +108,16 @@ Task *loadJSON(int id)
 	}
 
 	// Access JSON values
-	cJSON *name = cJSON_GetObjectItem(root, "title");
-	cJSON *age = cJSON_GetObjectItem(root, "status");
+	log(DEBUG, "Accessing JSON values and converting to task struct...\n");
+	cJSON *nameJSON = cJSON_GetObjectItem(root, "title");
+	cJSON *statusJSON = cJSON_GetObjectItem(root, "status");
+	cJSON *idJSON = cJSON_GetObjectItem(root, "id");
 
-	if (cJSON_IsString(name) && cJSON_IsNumber(age))
-	{
-		log(DEBUG, ("Name: %s\n", cJSON_GetStringValue(name)));
-		log(DEBUG, (const char)("Age: %d\n", cJSON_GetNumberValue(age)));
-	}
 	Task *task = malloc(sizeof(Task));
 	task->id = id;
+	strcpy(task->title, cJSON_GetStringValue(nameJSON));
+	task->status = cJSON_GetNumberValue(statusJSON);
+	task->id = cJSON_GetNumberValue(idJSON);
 
 	// Free resources
 	cJSON_Delete(root);
@@ -117,8 +127,9 @@ Task *loadJSON(int id)
 
 void deleteJSON(int id)
 {
-	// Delete the file
-	if (remove(("%s/%d.json", path, id)) != 0)
+	char string[200];
+	sprintf(string, "%s/%d.json", path, id);
+	if (remove(string) != 0)
 	{
 		perror("Error deleting file");
 	}
